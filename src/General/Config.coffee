@@ -27,10 +27,10 @@ Config =
       'Sauce':                        [true,  'Add sauce links to images.']
       'Reveal Spoilers':              [false, 'Reveal spoiler thumbnails.']
     'Linkification':
-      'Linkify':                      [true,  'Convert text links in to hyperlinks.']
-      'Clean Links':                  [true,  'Remove spoiler elements commonly used to post banned links.']
+      'Linkify':                      [true,  'Convert text links into hyperlinks.']
+      'Clean Links':                  [true,  'Remove spoiler texts commonly used to bypass banned links.']
       'Embedding':                    [true,  'Embed supported content.']
-      'Link Titles':                  [true,  'Fetch and replace titles of embeddable content.']
+      'Link Titles':                  [true,  'Fetch and replace links with titles of embeddable content.']
       'Cover Preview':                [true,  'Show preview of links on hover.']
     'Menu':
       'Menu':                         [true,  'Add a drop-down menu to posts.']
