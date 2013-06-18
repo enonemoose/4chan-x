@@ -1,3 +1,5 @@
+- Added `Linkification`.
+
 ### 3.5.4 - *2013-06-11*
 
 - Fix regression.

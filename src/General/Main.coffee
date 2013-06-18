@@ -118,6 +118,7 @@ Main =
     initFeature 'Thread Watcher',           ThreadWatcher
     initFeature 'Index Navigation',         Nav
     initFeature 'Keybinds',                 Keybinds
+    initFeature 'Linkify',                  Linkify
     # c.timeEnd 'All initializations'
 
     $.on d, 'AddCallback', Main.addCallback
