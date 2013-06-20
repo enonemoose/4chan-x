@@ -251,18 +251,8 @@ Linkify =
     {preview} = service
     $.on a, 'mouseover', (e) ->
       return if a.embedding?.toggle.textContent is 'Unembed'
-      el = $.el 'img',
-        id: 'ihover'
-        src: preview.call {result}
-      post = Get.postFromNode a
-      el.setAttribute 'data-fullid', post.fullID
-      $.add d.body, el
-      UI.hover
-        root: a
-        el: el
-        latestEvent: e
-        endEvents: 'mouseout click'
-        asapTest: -> el.height
+      preview.call {a, e, result}
+
   cb:
     title: ->
       @a.textContent = @title
@@ -278,6 +268,21 @@ Linkify =
       $.after @target.nextSibling, div
       @target.textContent = 'Unembed'
 
+    preview: ->
+      {a, e, src} = @
+      el = $.el 'img',
+        src: src
+        id: 'ihover'
+      post = Get.postFromNode a
+      el.setAttribute 'data-fullid', post.fullID
+      $.add d.body, el
+      UI.hover
+        root: a
+        el: el
+        latestEvent: e
+        endEvents: 'mouseout click'
+        asapTest: -> el.height
+
   embeds: [
       name: 'YouTube'
       style:
@@ -289,7 +294,9 @@ Linkify =
       regex: /(?:v[=\/]|#p\/[a-z]\/.+\/|youtu\.be\/)([a-z0-9_-]+)(?:.*[#&\?]t=([0-9hms]+))?/i
       title: -> @entry.title.$t
       titleURL: -> "https://gdata.youtube.com/feeds/api/videos/#{@result[1]}?alt=json&fields=title/text(),yt:noembed,app:control/yt:state/@reasonCode"
-      preview:  -> "https://img.youtube.com/vi/#{@result[1]}/0.jpg"
+      preview:  ->
+        src = "https://img.youtube.com/vi/#{@result[1]}/0.jpg"
+        Linkify.cb.preview.call {a: @a, e: @e, src}
       embedURL: ->
         [_, name, time] = @result
         time = if time then "#t=#{time}" else ''
@@ -302,6 +309,14 @@ Linkify =
       icon: '<%= grunt.file.read("img/embeds/SoundCloud.png", {encoding: "base64"}) %>'
       domains: /^(?:s(?:nd\.sc|oundcloud\.com)|www\.s(?:nd\.sc|oundcloud\.com)|m\.soundcloud\.com)$/
       regex: /\.(?:sc|com)\/([^#\&\?]+)/i
+      preview: ->
+        {a, e} = @
+        url = "https://soundcloud.com/oembed?format=json&url=#{a.href}"
+        $.cache url, ->
+          # probably nicer to fetch the url with title()
+          if @status in [200, 304]
+            src = JSON.parse(@response).thumbnail_url
+            Linkify.cb.preview.call {a, e, src}
       title: -> @title
       titleURL: -> "https://soundcloud.com/oembed?&format=json&url=#{@a.href}"
       embedURL: ->
