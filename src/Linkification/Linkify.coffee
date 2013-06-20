@@ -6,18 +6,14 @@ Linkify =
 
     @tld = /^(?:a(?:e(?:ro)?|r(?:pa)?|s(?:ia)?|[cdfgilmnoqtuwxz])|b(?:iz?|[abdefghjmnorstvwyz])|c(?:at?|o(?:(?:op|m))?|[cdfghiklmnrsuvxyz])|i(?:n(?:(?:fo|t))?|[delmoqrst])|j(?:o(?:bs)?|[emp])|m(?:o(?:bi)?|u(?:seum)?|il|[acdeghklmnpqrstvwxyz])|n(?:a(?:me)?|et?|[cfgilopruz])|o(?:rg|m)|p(?:ost|ro?|[aefghklmnstwy])|t(?:el|r(?:avel)?|[cdfghjklmnoptvwz])|xxx|e(?:du|[ceghrstu])|g(?:ov|[abdefghilmnpqrstuwy])|d[dejkmoz]|f[ijkmor]|h[kmnrtu]|k[eghimnprwyz]|l[abcikrstuvy]|qa|r[eosuw]|s[abcdeghijklmnorstuvxyz]|u[agksyz]|v[aceginu]|w[fs]|y[etu]|z[amw])$/i
 
-    @globalCatchAll = new RegExp @catchAll.source, 'g'
+    @globalCatchAll = ///#{@catchAll.source}///g
 
     if Conf['Link Titles']
-      $.get 'cachedTitles', {}, (item) ->
-        Linkify.cachedTitles = item.cachedTitles
+      $.get 'cachedTitles', {}, ({cachedTitles}) ->
         for key, service of Linkify.embeds
-          {name} = service
-          if service.title
-            unless Linkify.cachedTitles[name]
-              Linkify.cachedTitles[name] = {}
-            Linkify.embeds[key].cachedTitles = Linkify.cachedTitles[name]
-        return
+          continue unless service.title
+          Linkify.embeds[key].cachedTitles = cachedTitles[service.name] or= {}
+        Linkify.cachedTitles = cachedTitles
 
     Post::callbacks.push
       name: 'Linkify'
@@ -27,13 +23,15 @@ Linkify =
     if @isClone
       # here be handling for inline
       return
-    return if @isHidden or @thread.isHidden or !links = @info.comment.match Linkify.globalCatchAll
+    return unless links = @info.comment.match Linkify.globalCatchAll
 
     for link in links
       [link, protocol, isEmail, domain, tld, tldPastDot, resource] = link.match Linkify.catchAll
-      if /\.{2}|-{2}|w{3}\.4chan\.org/.test domain + tld
+      if /\.{2}|-{2}/.test fullDomain = domain + tld
         # https://code.google.com/p/chromium/issues/detail?id=146162
         # V8 doesn't like complex regex it seems.
+        continue
+      if resource and fullDomain is 'www.4chan.org'
         continue
       if tld and !isEmail and !resource
         if !Linkify.tld.test tldPastDot
@@ -41,14 +39,14 @@ Linkify =
         if @board.ID is 'g' and /^p[ly]|sh$/i.test tldPastDot
           continue
 
-      if !protocol 
+      if !protocol
         link = link.match(/\b.*/)?[0] or link
         if isEmail and resource
           link = link[...-resource.length]
 
       link = Linkify.trim link
-      if /[\)\]]$/.test(link) and close = link.match /[\)\]]/g
-        open = link.match(/[\(\]]/g) or ''
+      if /[)\]]$/.test(link) and close = link.match /[)\]]/g
+        open = link.match(/[(\]]/g) or ''
         if close.length > open.length
           link = Linkify.trim link[...-close.length - open.length]
       try
@@ -75,7 +73,7 @@ Linkify =
       else if isEmail
         URI = "mailto:#{URI}"
         thisTab = true
-      else if /^ftps?|irc$/i.test subdomain = URI.match(/^[a-z]+(?=\.)/i)?[0]
+      else if /^(ftps?|irc)$/i.test subdomain = URI.match(/^[a-z]+(?=\.)/i)?[0]
         URI = "#{subdomain}://#{URI}"
         thisTab = subdomain is 'irc'
       else
@@ -103,7 +101,7 @@ Linkify =
           href: a.href
         $.on toggle, 'click', (e) ->
           Linkify.toggle e
-        garbage = /^(?:(?:\u0020+)?[\[\(]embed[\)\]](?:\u0020+)?)+/i
+        garbage = /^(?:(?:\u0020+)?[\[(]embed[)\]](?:\u0020+)?)+/i
         if garbage.test (next = a.nextSibling)?.data
           next.data = next.data.replace garbage, ''
         $.after a, [$.tn '\u0020['; toggle, $.tn ']']
@@ -123,7 +121,7 @@ Linkify =
     node.sought = true
     {seeking}   = @seek
 
-    switch node.localName or node.nodeName
+    switch node.nodeName.toLowerCase()
       when '#text'
         break
       when 'wbr'
@@ -216,10 +214,7 @@ Linkify =
     return
 
   trim: (link) ->
-    if close = link.match /["',;:\?.]+$/
-      link[...close.index]
-    else
-      link
+    link.replace /["',;:\?.]+$/, ''
 
   toggle: (e) ->
     e.preventDefault()
@@ -230,7 +225,7 @@ Linkify =
       embed = a.embedding
       {result} = embed.info
       return embed.service.embedURL.call {result, target, href: target.href}
-    if target.textContent is 'Unembed'
+    else
       media = target.nextSibling.nextSibling
       $.rm media if media.className is 'media-embed'
       target.textContent = 'Embed'
@@ -245,32 +240,19 @@ Linkify =
       if @status in [200, 304] and title = service.title.call JSON.parse @response
         Linkify.cachedTitles[name][res] = title
         $.set 'cachedTitles', Linkify.cachedTitles
-        Linkify.cb.title.call {a, service, title}
-      else
-        if Conf['Embedding'] and toggle = a.embedding.toggle
-          for el in [toggle.previousSibling, toggle.nextSibling, toggle]
-            $.rm el
-        if !Conf['Linkify']
-          nodes = [] # oh my
-          for node in a.childNodes
-            nodes.push node
-          $.replace a, nodes
+        return Linkify.cb.title.call {a, service, title}
+      if Conf['Embedding'] and toggle = a.embedding.toggle
+        for el in [toggle.previousSibling, toggle.nextSibling, toggle]
+          $.rm el
+      unless Conf['Linkify']
+        $.replace a, [a.childNodes...]
+
   preview: (a, result, service) ->
     {preview} = service
     $.on a, 'mouseover', (e) ->
       return if a.embedding?.toggle.textContent is 'Unembed'
-      el = $.el 'img',
-        id: 'ihover'
-        src: preview.call {result}
-      post = Get.postFromNode a
-      el.setAttribute 'data-fullid', post.fullID
-      $.add d.body, el
-      UI.hover
-        root: a
-        el: el
-        latestEvent: e
-        endEvents: 'mouseout click'
-        asapTest: -> el.height
+      preview.call {a, e, result}
+
   cb:
     title: ->
       @a.textContent = @title
@@ -286,8 +268,22 @@ Linkify =
       $.after @target.nextSibling, div
       @target.textContent = 'Unembed'
 
+    preview: ->
+      {a, e, src} = @
+      el = $.el 'img',
+        src: src
+        id: 'ihover'
+      post = Get.postFromNode a
+      el.setAttribute 'data-fullid', post.fullID
+      $.add d.body, el
+      UI.hover
+        root: a
+        el: el
+        latestEvent: e
+        endEvents: 'mouseout click'
+        asapTest: -> el.height
+
   embeds: [
-    {
       name: 'YouTube'
       style:
         border: 'none'
@@ -298,19 +294,29 @@ Linkify =
       regex: /(?:v[=\/]|#p\/[a-z]\/.+\/|youtu\.be\/)([a-z0-9_-]+)(?:.*[#&\?]t=([0-9hms]+))?/i
       title: -> @entry.title.$t
       titleURL: -> "https://gdata.youtube.com/feeds/api/videos/#{@result[1]}?alt=json&fields=title/text(),yt:noembed,app:control/yt:state/@reasonCode"
-      preview:  -> "https://img.youtube.com/vi/#{@result[1]}/0.jpg"
+      preview:  ->
+        src = "https://img.youtube.com/vi/#{@result[1]}/0.jpg"
+        Linkify.cb.preview.call {a: @a, e: @e, src}
       embedURL: ->
         [_, name, time] = @result
         time = if time then "#t=#{time}" else ''
         el = $.el 'iframe',
-          src: "https://youtube.com/embed/#{name}#{time}?rel=1&autohide=1"
+          src: "https://youtube.com/embed/#{name}?rel=1&autohide=1#{time}"
         Linkify.cb.embed.call {el, style: '0', target: @target}
       results: true
-    }, {
+    ,
       name: 'SoundCloud'
       icon: '<%= grunt.file.read("img/embeds/SoundCloud.png", {encoding: "base64"}) %>'
       domains: /^(?:s(?:nd\.sc|oundcloud\.com)|www\.s(?:nd\.sc|oundcloud\.com)|m\.soundcloud\.com)$/
       regex: /\.(?:sc|com)\/([^#\&\?]+)/i
+      preview: ->
+        {a, e} = @
+        url = "https://soundcloud.com/oembed?format=json&url=#{a.href}"
+        $.cache url, ->
+          # probably nicer to fetch the url with title()
+          if @status in [200, 304]
+            src = JSON.parse(@response).thumbnail_url
+            Linkify.cb.preview.call {a, e, src}
       title: -> @title
       titleURL: -> "https://soundcloud.com/oembed?&format=json&url=#{@a.href}"
       embedURL: ->
@@ -322,7 +328,7 @@ Linkify =
               innerHTML: JSON.parse(@response).html
             Linkify.cb.embed.call {el, target}
         return
-    }, {
+    ,
       name: 'Vocaroo'
       style:
         border: 'none'
@@ -334,7 +340,7 @@ Linkify =
         el = $.el 'iframe',
           src: "http://vocaroo.com/player.swf?autoplay=0&playMediaID=#{@result[1]}"
         Linkify.cb.embed.call {el, style: '2', target: @target}
-    }, {
+    ,
       name: 'Vimeo'
       style:
         border: 'none'
@@ -351,7 +357,7 @@ Linkify =
         el = $.el 'iframe',
           src: "https://player.vimeo.com/video/#{name}#{time}"
         Linkify.cb.embed.call {el, style: '3', target: @target}
-    }, {
+    ,
       name: 'Pastebin'
       style:
         border: 'none'
@@ -363,7 +369,7 @@ Linkify =
         el = $.el 'iframe',
           src: "http://pastebin.com/embed_iframe.php?i=#{@result[1]}"
         Linkify.cb.embed.call {el, style: '4', target: @target}
-    }, {
+    ,
       name: 'Gist'
       style:
         border: 'none'
@@ -378,9 +384,9 @@ Linkify =
       titleURL: -> "https://api.github.com/gists/#{@result[1]}"
       embedURL: ->
         el = $.el 'iframe',
-          src: "http://www.purplegene.com/script?url=https://gist.github.com/#{@result[1]}.js"
+          src: "data:text/html,<script src='https://gist.github.com/#{@result[1]}.js'></script>"
         Linkify.cb.embed.call {el, style: '5', target: @target}
-    }, {
+    ,
       name: 'InstallGentoo'
       style:
         border: 'none'
@@ -392,8 +398,8 @@ Linkify =
         el = $.el 'iframe',
           src: "http://paste.installgentoo.com/view/embed/#{@result[1]}"
         Linkify.cb.embed.call {el, style: '6', target: @target}
-    }, {
-      name: 'Imgur'
+    ,
+      name: 'imgur'
       style:
         border: 'none'
         cursor: 'pointer'
@@ -417,7 +423,7 @@ Linkify =
       resize: ->
         Linkify.style.textContent =
           ".media-embed .image-embed { max-height: #{parseInt innerHeight * .8}px; max-width: #{parseInt innerWidth * .8}px; }"
-    }, {
+    ,
       name: 'LiveLeak'
       style:
         border: 'none'
@@ -429,7 +435,7 @@ Linkify =
         el = $.el 'iframe',
           src: "http://www.liveleak.com/e/#{@result[1]}"
         Linkify.cb.embed.call {el, style: '8', target: @target}
-    }, {
+    ,
       name: 'TwitchTV'
       style:
         border: 'none'
@@ -446,9 +452,9 @@ Linkify =
             <param name='flashvars' value='channel=#{channel}&start_volume=25&auto_play=false&archive_id=#{archive}' />
           """
         Linkify.cb.embed.call {el, style: '9',target: @target}
-    }, {
+    ,
       name: 'Vine'
-      style: 
+      style:
         border: 'none'
         width:  '500px'
         height: '500px'
@@ -458,5 +464,4 @@ Linkify =
         el = $.el 'iframe',
           src: "https://vine.co/#{@result[1]}/card"
         Linkify.cb.embed.call {el, style: '10', target: @target}
-    }
   ]
