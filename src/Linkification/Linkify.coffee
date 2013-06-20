@@ -14,7 +14,7 @@ Linkify =
           continue unless service.title
           Linkify.embeds[key].cachedTitles = cachedTitles[service.name] or= {}
         Linkify.cachedTitles = cachedTitles
-        
+
     Post::callbacks.push
       name: 'Linkify'
       cb:   @node
@@ -39,14 +39,14 @@ Linkify =
         if @board.ID is 'g' and /^p[ly]|sh$/i.test tldPastDot
           continue
 
-      if !protocol 
+      if !protocol
         link = link.match(/\b.*/)?[0] or link
         if isEmail and resource
           link = link[...-resource.length]
 
       link = Linkify.trim link
-      if /[\)\]]$/.test(link) and close = link.match /[\)\]]/g
-        open = link.match(/[\(\]]/g) or ''
+      if /[)\]]$/.test(link) and close = link.match /[)\]]/g
+        open = link.match(/[(\]]/g) or ''
         if close.length > open.length
           link = Linkify.trim link[...-close.length - open.length]
       try
@@ -73,7 +73,7 @@ Linkify =
       else if isEmail
         URI = "mailto:#{URI}"
         thisTab = true
-      else if /^ftps?|irc$/i.test subdomain = URI.match(/^[a-z]+(?=\.)/i)?[0]
+      else if /^(ftps?|irc)$/i.test subdomain = URI.match(/^[a-z]+(?=\.)/i)?[0]
         URI = "#{subdomain}://#{URI}"
         thisTab = subdomain is 'irc'
       else
@@ -101,7 +101,7 @@ Linkify =
           href: a.href
         $.on toggle, 'click', (e) ->
           Linkify.toggle e
-        garbage = /^(?:(?:\u0020+)?[\[\(]embed[\)\]](?:\u0020+)?)+/i
+        garbage = /^(?:(?:\u0020+)?[\[(]embed[)\]](?:\u0020+)?)+/i
         if garbage.test (next = a.nextSibling)?.data
           next.data = next.data.replace garbage, ''
         $.after a, [$.tn '\u0020['; toggle, $.tn ']']
@@ -121,7 +121,7 @@ Linkify =
     node.sought = true
     {seeking}   = @seek
 
-    switch node.localName or node.nodeName
+    switch node.nodeName.toLowerCase()
       when '#text'
         break
       when 'wbr'
@@ -214,10 +214,7 @@ Linkify =
     return
 
   trim: (link) ->
-    if close = link.match /["',;:\?.]+$/
-      link[...close.index]
-    else
-      link
+    link.replace /["',;:\?.]+$/, ''
 
   toggle: (e) ->
     e.preventDefault()
@@ -228,7 +225,7 @@ Linkify =
       embed = a.embedding
       {result} = embed.info
       return embed.service.embedURL.call {result, target, href: target.href}
-    if target.textContent is 'Unembed'
+    else
       media = target.nextSibling.nextSibling
       $.rm media if media.className is 'media-embed'
       target.textContent = 'Embed'
@@ -243,16 +240,13 @@ Linkify =
       if @status in [200, 304] and title = service.title.call JSON.parse @response
         Linkify.cachedTitles[name][res] = title
         $.set 'cachedTitles', Linkify.cachedTitles
-        Linkify.cb.title.call {a, service, title}
-      else
-        if Conf['Embedding'] and toggle = a.embedding.toggle
-          for el in [toggle.previousSibling, toggle.nextSibling, toggle]
-            $.rm el
-        if !Conf['Linkify']
-          nodes = [] # oh my
-          for node in a.childNodes
-            nodes.push node
-          $.replace a, nodes
+        return Linkify.cb.title.call {a, service, title}
+      if Conf['Embedding'] and toggle = a.embedding.toggle
+        for el in [toggle.previousSibling, toggle.nextSibling, toggle]
+          $.rm el
+      unless Conf['Linkify']
+        $.replace a, [a.childNodes...]
+
   preview: (a, result, service) ->
     {preview} = service
     $.on a, 'mouseover', (e) ->
@@ -445,7 +439,7 @@ Linkify =
         Linkify.cb.embed.call {el, style: '9',target: @target}
     ,
       name: 'Vine'
-      style: 
+      style:
         border: 'none'
         width:  '500px'
         height: '500px'
